@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Việc & Vé</title>
+  <meta name="description" content="To-do lấy từ Apple Calendar, làm xong nhận vé quay thưởng.">
+  <meta name="theme-color" content="#6d5dfc">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Việc & Vé">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">✅</span>
+      <span class="title" id="pageTitle">Việc cần làm</span>
+    </div>
+    <button class="ticket-pill" id="ticketPill" aria-label="Số vé">
+      <span class="ticket-icon">🎟️</span><span id="ticketCount">0</span>
+    </button>
+  </header>
+
+  <main>
+    <!-- ============ TASKS ============ -->
+    <section class="view active" id="view-tasks">
+      <div class="sync-bar">
+        <div class="sync-status" id="syncStatus">Chưa đồng bộ lịch</div>
+        <button class="icon-btn" id="syncBtn" aria-label="Đồng bộ lịch" title="Đồng bộ lịch">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+        </button>
+      </div>
+
+      <div class="progress-card" id="progressCard">
+        <div class="progress-text">
+          <strong id="progressLabel">Hôm nay</strong>
+          <span id="progressNums">0/0</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+
+      <form class="add-form" id="addForm" autocomplete="off">
+        <input id="addTitle" type="text" placeholder="+ Thêm việc thủ công…" maxlength="200">
+        <input id="addDate" type="date" aria-label="Ngày">
+        <button type="submit" class="btn primary small">Thêm</button>
+      </form>
+
+      <div id="taskList" class="task-list"></div>
+
+      <div class="empty" id="emptyState" hidden>
+        <div class="empty-emoji">🗓️</div>
+        <p><strong>Chưa có việc nào.</strong></p>
+        <p>Vào <a href="#settings" data-goto="settings">Cài đặt</a> để dán link lịch Apple (iCloud), hoặc thêm việc thủ công ở trên.</p>
+      </div>
+
+      <details class="hidden-tasks" id="hiddenWrap" hidden>
+        <summary>Việc đã ẩn (<span id="hiddenCount">0</span>)</summary>
+        <div id="hiddenList" class="task-list"></div>
+      </details>
+    </section>
+
+    <!-- ============ WHEEL ============ -->
+    <section class="view" id="view-wheel">
+      <div class="wheel-head">
+        <p class="wheel-sub">Mỗi việc hoàn thành = <strong>1 vé</strong>. Mỗi lượt quay tốn 1 vé.</p>
+      </div>
+      <div class="wheel-wrap">
+        <div class="pointer" aria-hidden="true"></div>
+        <canvas id="wheel" width="640" height="640" aria-label="Vòng quay"></canvas>
+        <button class="spin-center" id="spinBtn">QUAY</button>
+      </div>
+      <p class="wheel-hint" id="wheelHint"></p>
+      <div class="odds" id="odds"></div>
+
+      <h3 class="section-title">Lịch sử quay</h3>
+      <ul class="history" id="history"></ul>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section class="view" id="view-settings">
+      <div class="card">
+        <h3>🍎 Lịch Apple (iCloud)</h3>
+        <p class="muted">Dán <b>link lịch công khai</b> (bắt đầu bằng <code>webcal://</code> hoặc <code>https://</code>). Có thể thêm nhiều lịch.</p>
+        <ul class="cal-list" id="calList"></ul>
+        <form id="calForm" class="stack" autocomplete="off">
+          <input id="calName" type="text" placeholder="Tên lịch (vd: Công việc)" maxlength="60">
+          <input id="calUrl" type="text" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="webcal://p…-caldav.icloud.com/published/2/…" required>
+          <button class="btn primary" type="submit">Thêm lịch & đồng bộ</button>
+        </form>
+        <details class="howto">
+          <summary>Cách lấy link lịch trên iPhone / Mac</summary>
+          <ol>
+            <li><b>iPhone:</b> mở app <i>Lịch</i> → chạm <i>Lịch</i> ở dưới → chạm nút <b>ⓘ</b> cạnh lịch muốn dùng → bật <b>Lịch công khai</b> → <b>Chia sẻ liên kết…</b> → <b>Sao chép</b>. Dán vào ô trên.</li>
+            <li><b>Mac:</b> app Lịch → chuột phải vào lịch (cột trái) → <i>Chia sẻ lịch…</i> → tích <b>Lịch công khai</b> → bấm biểu tượng chia sẻ → <i>Sao chép</i>.</li>
+            <li>Lịch “Trên máy iPhone” hoặc lịch Google/Exchange không có nút này — hãy dùng lịch iCloud, hoặc dán link .ics của dịch vụ đó (Google Calendar có “Địa chỉ bí mật ở định dạng iCal”).</li>
+            <li>Link công khai: ai có link đều xem được lịch. Đừng chia sẻ link này.</li>
+          </ol>
+        </details>
+      </div>
+
+      <div class="card">
+        <h3>📅 Phạm vi lấy việc</h3>
+        <label class="row">Lấy việc cho <input id="lookahead" type="number" min="0" max="60" class="num"> ngày tới</label>
+        <label class="row">Giữ việc chưa xong của <input id="lookback" type="number" min="0" max="60" class="num"> ngày trước</label>
+        <label class="row switch"><input id="includeAllDay" type="checkbox"> Tính cả sự kiện cả ngày</label>
+        <label class="row">Bỏ qua sự kiện có chữ (cách nhau dấu phẩy)
+          <input id="excludeWords" type="text" placeholder="vd: sinh nhật, ngày lễ">
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>🌐 Kết nối</h3>
+        <p class="muted">Lịch iCloud chặn trình duyệt tải trực tiếp, nên app thử lần lượt vài proxy công cộng. Nếu hay lỗi, dùng proxy riêng (xem README) hoặc đồng bộ qua GitHub bên dưới.</p>
+        <label class="row">Chế độ
+          <select id="proxyMode">
+            <option value="auto">Tự động (thử lần lượt)</option>
+            <option value="direct">Chỉ tải trực tiếp</option>
+            <option value="custom">Proxy riêng</option>
+          </select>
+        </label>
+        <label class="row" id="customProxyRow">Proxy riêng (dùng <code>{url}</code>)
+          <input id="customProxy" type="url" placeholder="https://ten-ban.workers.dev/?url={url}">
+        </label>
+        <label class="row">Tự đồng bộ mỗi
+          <input id="autoSync" type="number" min="0" max="240" class="num"> phút (0 = tắt)
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>🔐 Đồng bộ qua GitHub (tuỳ chọn, ổn định nhất)</h3>
+        <p class="muted">Nếu đã cài secret <code>ICS_URLS</code> và <code>CAL_PASSPHRASE</code> trên GitHub, nhập cùng mật khẩu ở đây. Lịch được mã hoá AES-256 trước khi đưa lên web.</p>
+        <input id="passphrase" type="password" placeholder="Mật khẩu giải mã (CAL_PASSPHRASE)" autocomplete="off">
+      </div>
+
+      <div class="card">
+        <h3>📥 Nhập file .ics</h3>
+        <p class="muted">Không dùng link được? Xuất lịch ra file .ics và nhập vào đây.</p>
+        <input id="icsFile" type="file" accept=".ics,text/calendar">
+        <ul class="cal-list" id="fileList"></ul>
+      </div>
+
+      <div class="card">
+        <h3>🎡 Các ô của vòng quay</h3>
+        <p class="muted">Mỗi dòng = 1 ô. Muốn tỉ lệ cao hơn thì lặp lại dòng. Dòng bắt đầu bằng số phút (vd “5p …”) sẽ có nút hẹn giờ.</p>
+        <textarea id="segments" rows="5"></textarea>
+        <button class="btn" id="segReset" type="button">Khôi phục mặc định</button>
+      </div>
+
+      <div class="card">
+        <h3>💾 Dữ liệu</h3>
+        <div class="btn-row">
+          <button class="btn" id="exportBtn" type="button">Xuất sao lưu</button>
+          <label class="btn" for="importFile">Nhập sao lưu</label>
+          <input id="importFile" type="file" accept="application/json,.json" hidden>
+        </div>
+        <div class="btn-row">
+          <button class="btn danger" id="resetBtn" type="button">Xoá toàn bộ dữ liệu</button>
+        </div>
+        <details class="howto">
+          <summary>Nhật ký đồng bộ</summary>
+          <pre id="syncLog" class="log"></pre>
+        </details>
+        <p class="muted small" id="versionInfo"></p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab active" data-view="tasks"><span class="tab-ico">📝</span><span>Việc</span></button>
+    <button class="tab" data-view="wheel"><span class="tab-ico">🎡</span><span>Vòng quay</span><span class="badge" id="tabBadge" hidden>0</span></button>
+    <button class="tab" data-view="settings"><span class="tab-ico">⚙️</span><span>Cài đặt</span></button>
+  </nav>
+
+  <!-- result modal -->
+  <div class="modal" id="resultModal" hidden>
+    <div class="modal-card">
+      <div class="result-emoji" id="resultEmoji">🎉</div>
+      <h2 id="resultTitle">…</h2>
+      <p id="resultText" class="muted"></p>
+      <div class="btn-col">
+        <button class="btn primary" id="startTimerBtn" hidden>Bắt đầu hẹn giờ</button>
+        <button class="btn" id="closeResultBtn">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- timer overlay -->
+  <div class="modal" id="timerModal" hidden>
+    <div class="modal-card">
+      <p class="muted" id="timerLabel">Phần thưởng</p>
+      <div class="timer" id="timerDisplay">05:00</div>
+      <div class="btn-col">
+        <button class="btn" id="timerPauseBtn">Tạm dừng</button>
+        <button class="btn danger" id="timerStopBtn">Kết thúc</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <script src="js/ical.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

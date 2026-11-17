@@ -1,0 +1,84 @@
+name: Deploy web app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # cập nhật lịch mã hoá mỗi 30 phút (chỉ khi đã đặt secret)
+    - cron: "*/30 * * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.c.outputs.go }}
+    steps:
+      - id: c
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_SECRETS: ${{ secrets.ICS_URLS != '' && secrets.CAL_PASSPHRASE != '' }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/pages"
+          code=$(curl -s -o pages.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$api")
+          if [ "$code" = "404" ]; then
+            # thử tự bật GitHub Pages (thường cần chủ repo bật tay)
+            curl -s -o /dev/null -w 'enable attempt: %{http_code}\n' -X POST -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" "$api" -d '{"build_type":"workflow"}' || true
+            code=$(curl -s -o pages.json -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$api")
+          fi
+          if [ "$code" != "200" ]; then
+            echo "::notice::GitHub Pages chưa bật. Vào Settings → Pages → Source: GitHub Actions, rồi chạy lại workflow này."
+            echo "go=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          build_type=$(python3 -c "import json;print(json.load(open('pages.json')).get('build_type',''))")
+          site=$(python3 -c "import json;print(json.load(open('pages.json')).get('html_url',''))")
+          if [ "$build_type" != "workflow" ]; then
+            echo "::notice::Pages đang dùng 'Deploy from a branch' — site vẫn chạy, nhưng đồng bộ lịch mã hoá cần Source: GitHub Actions."
+            echo "go=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          go=true
+          if [ "$EVENT" = "schedule" ] && [ "$HAS_SECRETS" != "true" ]; then
+            # lịch chạy định kỳ chỉ cần khi có secret, hoặc khi site chưa được deploy lần nào
+            status=$(curl -s -o /dev/null -w '%{http_code}' "$site" || echo 000)
+            [ "$status" = "200" ] && go=false
+          fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: check
+    if: needs.check.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build site
+        run: |
+          mkdir -p _site
+          cp -r index.html manifest.webmanifest sw.js .nojekyll css js icons _site/
+      - name: Encrypted calendar
+        env:
+          ICS_URLS: ${{ secrets.ICS_URLS }}
+          CAL_PASSPHRASE: ${{ secrets.CAL_PASSPHRASE }}
+        run: node scripts/build-calendar.mjs _site/calendar.enc.json
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

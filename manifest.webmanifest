@@ -1,0 +1,17 @@
+{
+  "name": "Việc & Vé — To-do từ Apple Calendar",
+  "short_name": "Việc & Vé",
+  "description": "Danh sách việc lấy từ Apple Calendar. Làm xong nhận vé, quay thưởng.",
+  "lang": "vi",
+  "start_url": "./#tasks",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f3fb",
+  "theme_color": "#6d5dfc",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -31,9 +31,9 @@ Trúng thưởng có nút **hẹn giờ 5 phút** (hết giờ có chuông báo)
 ### 3. Kết nối Apple Calendar
 1. Trên iPhone: app **Lịch** → chạm **Lịch** ở dưới → nút **ⓘ** cạnh lịch muốn dùng → bật **Lịch công khai** → **Chia sẻ liên kết…** → **Sao chép**.
 2. Trong app Việc & Vé: **Cài đặt** → dán link vào ô *Lịch Apple* → **Thêm lịch & đồng bộ**.
-3. Có nhiều lịch thì lặp lại cho từng lịch.
-
-Xong! App tự đồng bộ mỗi khi mở và mỗi 15 phút.
+3. **Đồng bộ qua GitHub** (khuyên dùng — proxy công cộng thường bị lỗi/chậm):
+   bấm **Thiết lập** → app tự tạo mật khẩu và hiện sẵn 2 secret (`ICS_URLS`, `CAL_PASSPHRASE`) kèm nút *Copy* →
+   dán vào trang tạo secret trên GitHub → Actions → **Run workflow** → quay lại app bấm **Đồng bộ ngay**.
 
 ---
 
@@ -49,8 +49,8 @@ Xong! App tự đồng bộ mỗi khi mở và mỗi 15 phút.
 
 ## Nếu đồng bộ lịch bị lỗi
 
-Lịch iCloud không cho trình duyệt tải trực tiếp (CORS), nên app thử lần lượt vài proxy công cộng
-(allorigins, codetabs, corsproxy.io, cors.lol). Proxy công cộng đôi khi chậm/hỏng. Có 2 cách ổn định hơn:
+Lịch iCloud không cho trình duyệt tải trực tiếp (CORS), nên khi chưa thiết lập GitHub app thử cùng lúc vài proxy công cộng
+(allorigins, codetabs, cors.lol, whateverorigin). Proxy công cộng hay chậm/hỏng. Các cách ổn định hơn:
 
 ### Cách A — Đồng bộ qua GitHub, mã hoá (khuyên dùng)
 GitHub Actions tải lịch mỗi 30 phút, **mã hoá AES-256-GCM** rồi đưa lên web. Chỉ ai có mật khẩu mới đọc được.

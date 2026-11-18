@@ -1,6 +1,6 @@
-import { fetchIcs, parseIcs, normalizeUrl, calendarName } from './calendar.js';
+import { fetchIcs, parseIcs, normalizeUrl, calendarName, urlWarning } from './calendar.js';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const STORE_KEY = 'vieccve.state.v1';
 const EVENTS_KEY = 'vieccve.events.v1';
 const FILES_KEY = 'vieccve.files.v1';
@@ -199,7 +199,8 @@ function deleteManual(task) {
 
 function calColor(task) {
   if (task.kind === 'manual') return '#9c99b5';
-  const idx = state.settings.calendars.findIndex((c) => c.id === task.calId);
+  const gh = /^gh(\d+)$/.exec(task.calId || '');
+  const idx = gh ? Number(gh[1]) : state.settings.calendars.findIndex((c) => c.id === task.calId);
   return CAL_COLORS[(idx < 0 ? 0 : idx) % CAL_COLORS.length];
 }
 
@@ -336,62 +337,68 @@ async function syncAll({ silent = false } = {}) {
   let okCount = 0;
   let via = '';
 
-  // 1) link lịch
-  await Promise.all(sources.map(async (cal) => {
-    log(`Tải “${cal.name}”…`);
-    try {
-      const { text, via: v } = await fetchIcs(cal.url, {
-        mode: s.proxyMode, customProxy: s.customProxy, preferred: s.preferredProxy, log: (m) => log(`  ${cal.name}: ${m}`),
-      });
-      via = v;
-      if (s.proxyMode === 'auto') s.preferredProxy = v;
-      const evs = parseIcs(text, from, to).map((e) => ({ ...e, id: cal.id + ':' + e.id, calId: cal.id }));
-      if (!cal.name || cal.name === 'Lịch') cal.name = calendarName(text) || cal.name;
-      next.push(...evs);
-      cal.lastOk = Date.now(); cal.lastErr = ''; cal.count = evs.length;
-      okCount++;
-      log(`  ${cal.name}: ${evs.length} sự kiện trong khoảng`);
-    } catch (e) {
-      cal.lastErr = e.message;
-      errs.push(`${cal.name}: ${e.message}`);
-      log(`  ${cal.name}: LỖI ${e.message}`);
-      // giữ dữ liệu cũ của lịch này
-      next.push(...events.filter((x) => x.calId === cal.id));
-    }
-  }));
-
-  // 2) gói mã hoá từ GitHub Action
+  // 1) gói mã hoá từ GitHub Action (ổn định nhất). Nếu được thì không cần proxy.
+  let ghOk = false;
   if (s.passphrase) {
     try {
       const bundle = await decryptBundle(s.passphrase);
       bundle.calendars.forEach((c, i) => {
         const cid = 'gh' + i;
-        const evs = parseIcs(c.ics, from, to).map((e) => ({ ...e, id: 'gh:' + e.id, calId: cid }));
-        next.push(...evs);
+        next.push(...parseIcs(c.ics, from, to).map((e) => ({ ...e, calId: cid, calName: c.name })));
       });
+      ghOk = true;
+      s.ghLastErr = '';
       okCount++;
-      via = via || 'GitHub';
-      log(`GitHub: ${bundle.calendars.length} lịch, tạo lúc ${new Date(bundle.generatedAt).toLocaleString('vi-VN')}`);
+      s.ghGeneratedAt = bundle.generatedAt;
+      via = `GitHub · lịch lúc ${hm(bundle.generatedAt)}`;
+      log(`GitHub: ${bundle.calendars.length} lịch (${bundle.calendars.map((c) => c.name).join(', ')}), tạo lúc ${new Date(bundle.generatedAt).toLocaleString('vi-VN')}`);
     } catch (e) {
+      s.ghLastErr = e.message;
       errs.push('GitHub: ' + e.message);
       log('GitHub: LỖI ' + e.message);
       next.push(...events.filter((x) => String(x.calId).startsWith('gh')));
     }
   }
 
+  // 2) link lịch qua proxy (chỉ khi chưa có GitHub)
+  if (!ghOk) {
+    await Promise.all(sources.map(async (cal) => {
+      log(`Tải “${cal.name}”…`);
+      try {
+        const { text, via: v } = await fetchIcs(cal.url, {
+          mode: s.proxyMode, customProxy: s.customProxy, log: (m) => log(`  ${cal.name}: ${m}`),
+        });
+        via = v;
+        const evs = parseIcs(text, from, to).map((e) => ({ ...e, calId: cal.id }));
+        if (!cal.name || cal.name === 'Lịch') cal.name = calendarName(text) || cal.name;
+        next.push(...evs);
+        cal.lastOk = Date.now(); cal.lastErr = ''; cal.count = evs.length;
+        okCount++;
+        log(`  ${cal.name}: ${evs.length} sự kiện trong khoảng`);
+      } catch (e) {
+        cal.lastErr = e.message;
+        errs.push(`${cal.name}: ${e.message}`);
+        log(`  ${cal.name}: LỖI ${e.message}`);
+        next.push(...events.filter((x) => x.calId === cal.id));
+      }
+    }));
+  } else {
+    sources.forEach((cal) => { cal.lastErr = ''; });
+  }
+
   // 3) file .ics đã nhập
   for (const f of files) {
     try {
-      next.push(...parseIcs(f.text, from, to).map((e) => ({ ...e, id: 'file:' + e.id, calId: f.id })));
+      next.push(...parseIcs(f.text, from, to).map((e) => ({ ...e, calId: f.id })));
       okCount++;
     } catch (e) {
       errs.push(`${f.name}: ${e.message}`);
     }
   }
 
-  // bỏ trùng
+  // bỏ trùng (cùng sự kiện từ nhiều nguồn)
   const seen = new Set();
-  events = next.filter((e) => { const k = e.id.slice(e.id.indexOf(':') + 1); return seen.has(k) ? false : seen.add(k); });
+  events = next.filter((e) => (seen.has(e.id) ? false : seen.add(e.id)));
   save(EVENTS_KEY, events);
   state.lastSync = { at: Date.now(), ok: errs.length === 0, msg: errs.join(' | '), via, okCount };
   persist();
@@ -400,7 +407,7 @@ async function syncAll({ silent = false } = {}) {
   renderTasks();
   renderSyncStatus();
   renderSettings();
-  if (!silent) toast(errs.length ? 'Đồng bộ có lỗi — xem Cài đặt' : `Đã đồng bộ ${events.length} sự kiện`);
+  if (!silent) toast(errs.length ? (ghOk ? 'Đồng bộ có lỗi — xem Cài đặt' : 'Không tải được lịch — dùng “Đồng bộ qua GitHub” trong Cài đặt') : `Đã đồng bộ ${events.length} sự kiện`, errs.length ? 4000 : 2200);
 }
 
 function renderSyncStatus() {
@@ -410,7 +417,7 @@ function renderSyncStatus() {
   s.classList.toggle('err', !ls.ok);
   s.textContent = ls.ok
     ? `Đồng bộ ${relTime(ls.at)}${ls.via ? ' · ' + ls.via : ''}`
-    : `⚠️ Lỗi đồng bộ (${relTime(ls.at)}) — chạm để xem`;
+    : `⚠️ Lỗi đồng bộ (${relTime(ls.at)}) — chạm để xem cách sửa`;
 }
 
 /* =========================================================
@@ -754,9 +761,77 @@ function renderSettings() {
   $('#customProxyRow').hidden = s.proxyMode !== 'custom';
   setVal('#autoSync', s.autoSync);
   setVal('#passphrase', s.passphrase);
+  renderGithub();
   setVal('#segments', segments().join('\n'));
   $('#versionInfo').textContent = `Phiên bản ${APP_VERSION} · ${state.stats.completed} lần hoàn thành · ${state.stats.spins} lượt quay · ${state.stats.wins} lần trúng`;
   $('#syncLog').textContent = logLines.join('\n') || (state.lastSync && state.lastSync.msg) || 'Chưa có';
+}
+
+/* ---------- GitHub sync helper ---------- */
+function repoInfo() {
+  const m = /^([^.]+)\.github\.io$/i.exec(location.hostname);
+  const repo = location.pathname.split('/').filter(Boolean)[0];
+  if (m && repo) return { owner: m[1], repo };
+  return { owner: 'phuociii', repo: 'to-do' };
+}
+function randomPass() {
+  const a = new Uint8Array(18);
+  crypto.getRandomValues(a);
+  return btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_');
+}
+function renderGithub() {
+  const s = state.settings;
+  const { owner, repo } = repoInfo();
+  $('#ghSecretLink').href = `https://github.com/${owner}/${repo}/settings/secrets/actions/new`;
+  $('#ghRunLink').href = `https://github.com/${owner}/${repo}/actions/workflows/pages.yml`;
+  $('#ghUrls').value = s.calendars.map((c) => `${c.name} | ${c.url}`).join('\n');
+  $('#ghPass').value = s.passphrase || '';
+  const st = $('#ghStatus');
+  const btn = $('#ghSetupBtn');
+  if (!s.passphrase) {
+    st.hidden = true;
+    btn.textContent = 'Thiết lập (copy–dán 2 lần)';
+    return;
+  }
+  st.hidden = false;
+  if (s.ghLastErr === '' && s.ghGeneratedAt) {
+    st.className = 'gh-status ok';
+    st.textContent = `✓ Đang đồng bộ qua GitHub · lịch cập nhật lúc ${new Date(s.ghGeneratedAt).toLocaleString('vi-VN')}`;
+    btn.textContent = 'Xem lại hướng dẫn / secret';
+  } else if (s.ghLastErr && /mật khẩu/.test(s.ghLastErr)) {
+    st.className = 'gh-status err';
+    st.textContent = '⚠️ Sai mật khẩu: secret CAL_PASSPHRASE trên GitHub khác với mật khẩu trong app.';
+    btn.textContent = 'Xem lại secret';
+  } else {
+    st.className = 'gh-status';
+    st.textContent = '⏳ Chưa có dữ liệu từ GitHub. Làm các bước bên dưới rồi bấm “Đồng bộ ngay”.';
+    btn.textContent = 'Xem lại hướng dẫn / secret';
+    $('#ghSteps').hidden = false;
+  }
+}
+async function copyText(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (_) {
+    const t = el('textarea', {}, text);
+    document.body.append(t); t.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    t.remove();
+  }
+  toast(`Đã copy ${label}`);
+}
+function bindGithub() {
+  const s = state.settings;
+  $('#ghSetupBtn').addEventListener('click', () => {
+    if (!s.calendars.length) { toast('Thêm link lịch ở mục “Lịch Apple” trước'); $('#calUrl').focus(); return; }
+    if (!s.passphrase) { s.passphrase = randomPass(); persist(); }
+    renderGithub();
+    $('#ghSteps').hidden = false;
+    $('#ghSteps').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  $('#ghSyncBtn').addEventListener('click', () => syncAll());
+  document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copyText(b.dataset.copy, 'tên')));
+  document.querySelectorAll('[data-copy-from]').forEach((b) => b.addEventListener('click', () => copyText($('#' + b.dataset.copyFrom).value, 'giá trị')));
 }
 
 function bindSettings() {
@@ -766,6 +841,8 @@ function bindSettings() {
     const url = normalizeUrl($('#calUrl').value);
     if (!/^https?:\/\/[^/]+\..+/.test(url) && !/^http:\/\/127/.test(url)) { toast('Link không hợp lệ'); return; }
     if (s.calendars.some((c) => normalizeUrl(c.url) === url)) { toast('Lịch này đã có rồi'); return; }
+    const warn = urlWarning(url);
+    if (warn && !confirm(warn + '\n\nVẫn thêm link này?')) return;
     s.calendars.push({ id: uid(), name: $('#calName').value.trim() || 'Lịch', url: $('#calUrl').value.trim(), enabled: true });
     $('#calName').value = ''; $('#calUrl').value = '';
     persist(); renderSettings();
@@ -849,7 +926,9 @@ function init() {
   document.querySelectorAll('[data-goto]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); go(a.dataset.goto); }));
   $('#ticketPill').addEventListener('click', () => go('wheel'));
   $('#syncBtn').addEventListener('click', () => syncAll());
-  $('#syncStatus').addEventListener('click', () => { if (state.lastSync && !state.lastSync.ok) go('settings'); });
+  $('#syncStatus').addEventListener('click', () => {
+    if (state.lastSync && !state.lastSync.ok) { go('settings'); setTimeout(() => $('#ghCard').scrollIntoView({ behavior: 'smooth' }), 50); }
+  });
 
   // thêm việc thủ công
   $('#addDate').value = dateKey(new Date());
@@ -874,6 +953,7 @@ function init() {
   });
 
   bindSettings();
+  bindGithub();
   renderTickets();
   renderTasks();
   renderSyncStatus();

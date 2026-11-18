@@ -1,5 +1,5 @@
 // Service worker: chạy offline. Ưu tiên mạng (luôn bản mới nhất), mất mạng thì dùng bản đã lưu.
-const CACHE = 'viec-va-ve-v1';
+const CACHE = 'viec-va-ve-v2';
 const SHELL = [
   './', './index.html', './css/style.css', './js/app.js', './js/calendar.js', './js/ical.min.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',

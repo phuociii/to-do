@@ -1,11 +1,13 @@
 // Tải và đọc lịch .ics (Apple iCloud / Google / bất kỳ nguồn iCalendar nào).
 /* global ICAL */
 
+// Proxy công cộng (dự phòng). Không ổn định — cách chắc chắn là đồng bộ qua GitHub.
 const PUBLIC_PROXIES = [
   { name: 'allorigins', make: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+  { name: 'allorigins-json', make: (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, json: 'contents' },
   { name: 'codetabs', make: (u) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}` },
-  { name: 'corsproxy.io', make: (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}` },
   { name: 'cors.lol', make: (u) => `https://api.cors.lol/?url=${encodeURIComponent(u)}` },
+  { name: 'whateverorigin', make: (u) => `https://whateverorigin.org/get?url=${encodeURIComponent(u)}`, json: 'contents' },
 ];
 
 export function normalizeUrl(raw) {
@@ -16,12 +18,28 @@ export function normalizeUrl(raw) {
   return u;
 }
 
-async function fetchText(url, timeoutMs = 15000) {
+/** Cảnh báo nếu link không phải link lịch công khai (.ics) */
+export function urlWarning(raw) {
+  const u = normalizeUrl(raw);
+  if (/icloud\.com\/calendar\//i.test(u) || /icloud\.com\/(#|share)/i.test(u)) {
+    return 'Đây là link mời chia sẻ, không phải link “Lịch công khai”. Hãy bật “Lịch công khai” rồi sao chép link bắt đầu bằng webcal://';
+  }
+  if (/icloud\.com/i.test(u) && !/\/published\//i.test(u)) {
+    return 'Link iCloud công khai thường có dạng webcal://pXX-caldav.icloud.com/published/2/…';
+  }
+  return '';
+}
+
+async function fetchText(url, timeoutMs, jsonField) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store', redirect: 'follow' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (jsonField) {
+      const j = await res.json();
+      return String(j[jsonField] || '');
+    }
     return await res.text();
   } finally {
     clearTimeout(t);
@@ -32,44 +50,47 @@ function looksLikeIcs(text) {
   return typeof text === 'string' && text.indexOf('BEGIN:VCALENDAR') !== -1;
 }
 
+const errMsg = (e) => (e && e.name === 'AbortError' ? 'quá thời gian' : (e && e.message) || String(e));
+
 /**
  * Tải nội dung .ics. Trả về { text, via }.
- * opts: { mode: 'auto'|'direct'|'custom', customProxy, preferred, log }
+ * Thử tất cả cách cùng lúc, lấy kết quả hợp lệ đầu tiên.
+ * opts: { mode: 'auto'|'direct'|'custom', customProxy, log }
  */
 export async function fetchIcs(rawUrl, opts = {}) {
   const url = normalizeUrl(rawUrl);
   const log = opts.log || (() => {});
-  let candidates = [];
-  const direct = { name: 'trực tiếp', make: (u) => u };
+  const direct = { name: 'trực tiếp', make: (u) => u, timeout: 10000 };
+  let candidates;
   if (opts.mode === 'custom' && opts.customProxy) {
     const tpl = opts.customProxy.trim();
     candidates = [{
       name: 'proxy riêng',
-      make: (u) => tpl.includes('{url}') ? tpl.replace('{url}', encodeURIComponent(u)) : tpl + encodeURIComponent(u),
+      make: (u) => (tpl.includes('{url}') ? tpl.replace('{url}', encodeURIComponent(u)) : tpl + encodeURIComponent(u)),
     }];
   } else if (opts.mode === 'direct') {
     candidates = [direct];
   } else {
     candidates = [direct, ...PUBLIC_PROXIES];
-    if (opts.preferred) {
-      const i = candidates.findIndex((c) => c.name === opts.preferred);
-      if (i > 0) candidates.unshift(candidates.splice(i, 1)[0]);
-    }
   }
-  const errors = [];
-  for (const c of candidates) {
+  const attempts = candidates.map(async (c) => {
     try {
-      const text = await fetchText(c.make(url), c === direct ? 8000 : 15000);
-      if (!looksLikeIcs(text)) throw new Error('không phải dữ liệu lịch');
+      const text = await fetchText(c.make(url), c.timeout || 25000, c.json);
+      if (!looksLikeIcs(text)) throw new Error(/<html/i.test(text) ? 'trả về trang web, không phải lịch' : 'không phải dữ liệu lịch');
       log(`✓ ${c.name}`);
       return { text, via: c.name };
     } catch (e) {
-      const msg = e && e.name === 'AbortError' ? 'quá thời gian' : (e && e.message) || String(e);
-      log(`✗ ${c.name}: ${msg}`);
-      errors.push(`${c.name}: ${msg}`);
+      log(`✗ ${c.name}: ${errMsg(e)}`);
+      throw new Error(`${c.name}: ${errMsg(e)}`);
     }
+  });
+  try {
+    return await Promise.any(attempts);
+  } catch (agg) {
+    const msgs = (agg.errors || []).map((e) => e.message);
+    const warn = urlWarning(rawUrl);
+    throw new Error((warn ? warn + ' — ' : '') + 'Không tải được lịch (' + msgs.join('; ') + ')');
   }
-  throw new Error('Không tải được lịch (' + errors.join('; ') + ')');
 }
 
 /** Tên lịch trong file (X-WR-CALNAME) */

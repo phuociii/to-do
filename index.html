@@ -103,6 +103,36 @@
         </details>
       </div>
 
+      <div class="card" id="ghCard">
+        <h3>🔐 Đồng bộ qua GitHub (ổn định nhất)</h3>
+        <p class="muted">GitHub tự tải lịch của bạn mỗi 30 phút, <b>mã hoá AES-256</b> rồi đưa lên web. Không cần proxy công cộng, chỉ ai có mật khẩu mới đọc được.</p>
+        <div id="ghStatus" class="gh-status" hidden></div>
+        <button class="btn primary" id="ghSetupBtn" type="button">Thiết lập (copy–dán 2 lần)</button>
+        <div id="ghSteps" class="gh-steps" hidden>
+          <ol>
+            <li>Mở <a id="ghSecretLink" target="_blank" rel="noopener">trang tạo secret trên GitHub ↗</a>. Tạo <b>2 secret</b>:
+              <div class="secret">
+                <div class="secret-head"><span>Name:</span> <code>ICS_URLS</code> <button class="btn small" type="button" data-copy="ICS_URLS">Copy tên</button></div>
+                <textarea id="ghUrls" rows="3" readonly></textarea>
+                <button class="btn small" type="button" data-copy-from="ghUrls">Copy giá trị</button>
+              </div>
+              <div class="secret">
+                <div class="secret-head"><span>Name:</span> <code>CAL_PASSPHRASE</code> <button class="btn small" type="button" data-copy="CAL_PASSPHRASE">Copy tên</button></div>
+                <input id="ghPass" type="text" readonly>
+                <button class="btn small" type="button" data-copy-from="ghPass">Copy giá trị</button>
+              </div>
+            </li>
+            <li>Mở <a id="ghRunLink" target="_blank" rel="noopener">Actions ↗</a> → <b>Run workflow</b> → đợi dấu ✅ (khoảng 1 phút).</li>
+            <li>Bấm <button class="btn small primary" id="ghSyncBtn" type="button">⟳ Đồng bộ ngay</button></li>
+          </ol>
+          <p class="muted small">Mật khẩu đã được lưu sẵn trong app này. Thêm/bớt lịch sau này thì sửa secret <code>ICS_URLS</code>.</p>
+        </div>
+        <details class="howto">
+          <summary>Nhập mật khẩu thủ công</summary>
+          <input id="passphrase" type="password" placeholder="Mật khẩu giải mã (CAL_PASSPHRASE)" autocomplete="off" style="margin-top:8px">
+        </details>
+      </div>
+
       <div class="card">
         <h3>📅 Phạm vi lấy việc</h3>
         <label class="row">Lấy việc cho <input id="lookahead" type="number" min="0" max="60" class="num"> ngày tới</label>
@@ -115,7 +145,7 @@
 
       <div class="card">
         <h3>🌐 Kết nối</h3>
-        <p class="muted">Lịch iCloud chặn trình duyệt tải trực tiếp, nên app thử lần lượt vài proxy công cộng. Nếu hay lỗi, dùng proxy riêng (xem README) hoặc đồng bộ qua GitHub bên dưới.</p>
+        <p class="muted">Lịch iCloud chặn trình duyệt tải trực tiếp, nên app thử lần lượt vài proxy công cộng. Proxy công cộng hay lỗi — nên dùng “Đồng bộ qua GitHub” ở trên.</p>
         <label class="row">Chế độ
           <select id="proxyMode">
             <option value="auto">Tự động (thử lần lượt)</option>
@@ -129,12 +159,6 @@
         <label class="row">Tự đồng bộ mỗi
           <input id="autoSync" type="number" min="0" max="240" class="num"> phút (0 = tắt)
         </label>
-      </div>
-
-      <div class="card">
-        <h3>🔐 Đồng bộ qua GitHub (tuỳ chọn, ổn định nhất)</h3>
-        <p class="muted">Nếu đã cài secret <code>ICS_URLS</code> và <code>CAL_PASSPHRASE</code> trên GitHub, nhập cùng mật khẩu ở đây. Lịch được mã hoá AES-256 trước khi đưa lên web.</p>
-        <input id="passphrase" type="password" placeholder="Mật khẩu giải mã (CAL_PASSPHRASE)" autocomplete="off">
       </div>
 
       <div class="card">

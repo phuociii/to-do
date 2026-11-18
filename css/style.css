@@ -240,3 +240,14 @@ label.row:has(.num) { display: block; }
 }
 .toast[hidden] { display: none; }
 #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 70; width: 100%; height: 100%; }
+
+.gh-status { font-size: 14px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); margin-bottom: 10px; }
+.gh-status.ok { color: var(--good); }
+.gh-status.err { color: var(--danger); }
+.gh-steps ol { padding-left: 20px; margin: 12px 0 0; }
+.gh-steps li { margin: 10px 0; }
+.secret { background: var(--surface-2); border-radius: 12px; padding: 10px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.secret-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.secret-head .btn { margin-left: auto; }
+.secret textarea, .secret input { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.secret > .btn { align-self: flex-start; }
